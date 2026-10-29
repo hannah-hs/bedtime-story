@@ -1,8 +1,13 @@
 # 🌙 우리 아이 잠자리 동화
 
 아이 **이름 · 나이 · 좋아하는 것 · 오늘 있었던 일(선택)** 을 적고 **"동화 만들기"** 를 누르면,
-Claude Sonnet 5.5가 소리 내어 읽으면 3분쯤 걸리는 포근한 한국어 동화를 지어 줘요.
-글자가 바로바로 나타나고, **🔊 읽어주기** 버튼을 누르면 브라우저가 소리 내어 읽어 줘요.
+Claude Sonnet 5.5가 소리 내어 읽으면 3분쯤 걸리는 포근한 한국어 동화를 **5장면 그림책**으로 지어 줘요.
+
+- 글자가 바로바로 나타나요 (스트리밍)
+- 장면마다 OpenAI 그림 AI가 수채화 그림을 그려 줘요 (장면마다 몇십 초 걸려요)
+- ◀ ▶ 버튼으로 책장을 넘겨요
+- **🔊 읽어주기** 를 누르면 브라우저가 한 장씩 읽고 저절로 다음 장으로 넘어가요
+- 잠자리에 맞춘 어두운 밤하늘 화면
 
 ---
 
@@ -13,14 +18,20 @@ Claude Sonnet 5.5가 소리 내어 읽으면 3분쯤 걸리는 포근한 한국�
 | `app/page.tsx` | 화면 (입력칸, 버튼, 동화, 읽어주기) |
 | `app/globals.css` | 꾸미기 (DESIGN.md 색·모양) |
 | `app/api/story/route.ts` | Claude에게 동화를 부탁하는 서버 코드 |
-| `.env` | 내 API 키 (**GitHub에 안 올라가요**) |
+| `app/api/image/route.ts` | OpenAI에게 장면 그림을 부탁하는 서버 코드 |
+| `.env` | 내 API 키 2개 (**GitHub에 안 올라가요**) |
 | `.env.example` | `.env` 를 어떻게 쓰는지 보여주는 예시 |
 
 ---
 
 ## 💻 내 컴퓨터에서 실행하기
 
-1. `.env` 파일을 열고 `ANTHROPIC_API_KEY=` 뒤에 키를 붙여 넣어요.
+1. `.env` 파일을 열고 키 2개를 `=` 뒤에 붙여 넣어요.
+   - `ANTHROPIC_API_KEY=` ← Anthropic 키 (동화 글)
+   - `OPENAI_API_KEY=` ← OpenAI 키 (그림). https://platform.openai.com/api-keys 에서 만들어요.
+     결제 카드 등록이 필요하고, 처음엔 **조직 인증(Verification)** 을 하라고 할 수도 있어요
+     (https://platform.openai.com/settings/organization/general).
+   - OpenAI 키가 없어도 동화 글은 나와요. 그림 자리에 "그림을 불러오지 못했어요"가 보여요.
 2. 터미널에서 이 폴더로 와서 아래 명령을 입력해요.
    (Node.js는 `~/.local/node-v26.13.0-darwin-arm64` 에 설치되어 있어요.)
 
@@ -65,6 +76,12 @@ npm run dev
    - **Key**: `ANTHROPIC_API_KEY`
    - **Value**: 내 API 키 (`sk-ant-` 로 시작하는 긴 글자)
 3. **Add** 를 눌러요.
+4. 같은 방법으로 하나 더 넣어요.
+   - **Key**: `OPENAI_API_KEY`
+   - **Value**: OpenAI 키 (`sk-` 로 시작)
+
+> 이미 배포한 뒤에 키를 추가했다면: 프로젝트 → **Settings** → **Environment Variables** 에서 추가하고,
+> **Deployments** 탭 맨 위 항목의 `⋯` → **Redeploy** 를 눌러야 적용돼요.
 
 ### 4단계 · 배포하기
 1. **Deploy** 버튼을 눌러요.
@@ -82,6 +99,7 @@ npm run dev
 |---|---|
 | "API 키가 올바르지 않아요" | Vercel → 프로젝트 → **Settings** → **Environment Variables** 에서 키를 다시 확인하고, **Deployments** 탭에서 맨 위 항목의 `⋯` → **Redeploy** |
 | 동화가 중간에 끊겨요 | 잠시 뒤 다시 눌러 보세요 |
+| 그림 자리에 "그림을 불러오지 못했어요" | `OPENAI_API_KEY` 가 있는지, OpenAI 결제·조직 인증이 됐는지 확인해요 |
 | 읽어주기 소리가 안 나요 | 휴대폰 무음 모드를 끄고, 사파리나 크롬을 써 보세요 |
 | 키를 실수로 GitHub에 올렸어요 | https://console.anthropic.com 에서 그 키를 **바로 삭제**하고 새 키를 만드세요 |
 
@@ -91,4 +109,6 @@ npm run dev
 - Next.js 16 (App Router) + TypeScript
 - 모델: `claude-sonnet-5-5` (스트리밍)
 - 안전 필터가 동화를 거절하면 다른 모델이 이어서 쓰도록 `fallbacks: "default"` 를 켜 두었어요
+- 그림: OpenAI `gpt-image-2.5-flare`, 1024×1024, `quality: "medium"` — 동화 1편에 그림 5장
 - 읽어주기: 브라우저 내장 `speechSynthesis` (한국어, 조금 느리게)
+- ⚠️ 로그인이 없어서 주소를 아는 사람은 누구나 내 크레딧으로 동화·그림을 만들 수 있어요. 주소는 믿는 사람에게만!

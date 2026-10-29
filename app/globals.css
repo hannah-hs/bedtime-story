@@ -1,41 +1,48 @@
-/* DESIGN.md 토큰 (흰 바탕 + Rausch 포인트 색 + 둥근 모서리) */
+/* DESIGN.md 의 둥근 모양 · 간격 · Rausch 포인트 색을 밤하늘 테마에 옮겼어요 */
 :root {
   --primary: #ff385c;
   --primary-active: #e00b41;
-  --primary-disabled: #ffd1da;
-  --ink: #222222;
-  --body: #3f3f3f;
-  --muted: #6a6a6a;
-  --hairline: #dddddd;
-  --canvas: #ffffff;
-  --surface-soft: #f7f7f7;
-  --surface-strong: #f2f2f2;
-  --error: #c13515;
-  --shadow: rgba(0, 0, 0, 0.02) 0 0 0 1px, rgba(0, 0, 0, 0.04) 0 2px 6px 0, rgba(0, 0, 0, 0.1) 0 4px 8px 0;
+  --primary-disabled: #7a3a4f;
+  --night: #121633;        /* 바탕: 깊은 밤하늘 */
+  --night-card: #1c2148;   /* 카드 */
+  --night-field: #252b5a;  /* 입력칸 */
+  --ink: #f6f0e2;          /* 글자: 따뜻한 크림색 (눈부심 줄이기) */
+  --body: #e4dccb;
+  --muted: #a6a8c8;
+  --hairline: #343a6e;
+  --star: #ffe9a8;
+  --error: #ff8a7a;
+  --shadow: rgba(0, 0, 0, 0.2) 0 2px 6px 0, rgba(0, 0, 0, 0.3) 0 4px 8px 0;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--canvas);
+  min-height: 100vh;
   color: var(--ink);
+  background-color: var(--night);
+  /* 작은 별들 */
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 8%, var(--star), transparent),
+    radial-gradient(1px 1px at 78% 4%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 90% 18%, var(--star), transparent),
+    radial-gradient(1px 1px at 35% 15%, #fff, transparent),
+    radial-gradient(1px 1px at 60% 26%, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 5% 40%, #fff, transparent);
+  background-attachment: fixed;
   font-family: Inter, -apple-system, system-ui, "Apple SD Gothic Neo", "Noto Sans KR", Roboto, sans-serif;
   font-size: 18px;
   line-height: 1.5;
 }
 
-main {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 32px 16px 64px;
-}
+main { max-width: 640px; margin: 0 auto; padding: 32px 16px 64px; }
 
 h1 { font-size: 28px; font-weight: 700; margin: 0 0 4px; }
 .subtitle { color: var(--muted); margin: 0 0 24px; }
 
 .card {
-  background: var(--canvas);
+  background: var(--night-card);
   border: 1px solid var(--hairline);
   border-radius: 14px;
   box-shadow: var(--shadow);
@@ -52,11 +59,12 @@ input, select {
   padding: 14px 12px;
   font: inherit;
   color: var(--ink);
-  background: var(--canvas);
+  background: var(--night-field);
   border: 1px solid var(--hairline);
   border-radius: 8px;
 }
-input:focus, select:focus { outline: none; border: 2px solid var(--ink); padding: 13px 11px; }
+input::placeholder { color: var(--muted); }
+input:focus, select:focus { outline: none; border: 2px solid var(--star); padding: 13px 11px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -64,16 +72,40 @@ input:focus, select:focus { outline: none; border: 2px solid var(--ink); padding
   font: inherit; font-weight: 600;
   border-radius: 8px; cursor: pointer;
 }
+.btn:disabled { cursor: not-allowed; opacity: 0.4; }
 .btn-primary { width: 100%; background: var(--primary); color: #fff; border: none; }
 .btn-primary:active { background: var(--primary-active); }
-.btn-primary:disabled { background: var(--primary-disabled); cursor: not-allowed; }
-.btn-secondary { background: var(--canvas); color: var(--ink); border: 1px solid var(--ink); }
-
-.story { margin-top: 24px; }
-.story h2 { font-size: 24px; font-weight: 700; margin: 0 0 16px; }
-.story p {
-  font-size: 21px; line-height: 1.8; color: var(--body);
-  white-space: pre-wrap; margin: 0;
+.btn-primary:disabled { background: var(--primary-disabled); opacity: 1; }
+.btn-secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+.btn-round {
+  width: 56px; padding: 0; border-radius: 9999px;
+  background: var(--night-field); color: var(--ink); border: 1px solid var(--hairline);
 }
-.actions { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+
+/* 그림책 */
+.book { margin-top: 24px; }
+.book h2 { font-size: 24px; font-weight: 700; margin: 0 0 16px; text-align: center; }
+
+.picture {
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--night-field);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.picture-msg { color: var(--muted); text-align: center; font-size: 16px; line-height: 2; }
+.twinkle { animation: twinkle 1.6s ease-in-out infinite; }
+@keyframes twinkle { 50% { opacity: 0.4; } }
+
+.page-text {
+  font-size: 21px; line-height: 1.8; color: var(--body);
+  white-space: pre-wrap; margin: 0; min-height: 7em;
+}
+
+.pager { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; }
+.page-num { color: var(--muted); font-size: 16px; }
+
+.actions { display: flex; justify-content: center; margin-top: 20px; }
 .error { color: var(--error); margin-top: 16px; }
