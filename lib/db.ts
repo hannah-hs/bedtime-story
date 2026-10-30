@@ -48,7 +48,7 @@ export async function createStory(
   db: Firestore,
   uid: string,
   storyId: string,
-  story: { title: string; hero: string; input: StoryInput; pages: StoryPage[] },
+  story: { title: string; hero: string; art: string; input: StoryInput; pages: StoryPage[] },
 ) {
   await setDoc(storyRef(db, uid, storyId), {
     ...story,

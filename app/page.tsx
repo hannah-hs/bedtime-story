@@ -22,6 +22,7 @@ function parseStory(raw: string, streamDone: boolean) {
   const [head, ...chunks] = raw.split(/^===\s*$/m);
   const title = head.match(/^제목:\s*(.*)$/m)?.[1]?.trim() ?? "";
   const heroMatch = head.match(/^주인공:\s*(.*)\n/m);
+  const artMatch = head.match(/^화풍:\s*(.*)\n/m); // 이 책의 그림 색감과 빛
   const pages: Page[] = chunks.map((chunk, i) => {
     const m = chunk.match(/^\s*그림:\s*(.*)(\n?)/);
     // "그림:" 줄, 아직 덜 온 "그림" 글자, 덜 온 "===" 줄은 본문에서 빼요
@@ -37,12 +38,12 @@ function parseStory(raw: string, streamDone: boolean) {
       complete: i < chunks.length - 1 || streamDone,
     };
   });
-  return { title, hero: heroMatch?.[1]?.trim() ?? "", pages };
+  return { title, hero: heroMatch?.[1]?.trim() ?? "", art: artMatch?.[1]?.trim() ?? "", pages };
 }
 
 // 책장에서 다시 연 동화는 이미 다 쓴 상태예요
 function fromSaved(s: SavedStory) {
-  return { title: s.title, hero: s.hero, pages: s.pages.map((p): Page => ({ ...p, sceneDone: true, complete: true })) };
+  return { title: s.title, hero: s.hero, art: s.art ?? "", pages: s.pages.map((p): Page => ({ ...p, sceneDone: true, complete: true })) };
 }
 
 // 파일 이름에 쓸 수 없는 글자를 빼요
@@ -83,7 +84,7 @@ export default function Home() {
   const uploading = useRef(new Set<string>()); // 올리는 중이거나 다 올린 파일
   const voiceBlobs = useRef(new Map<number, Blob>()); // 아직 안 올린 목소리
 
-  const { title, hero, pages } = opened ? fromSaved(opened) : parseStory(raw, !loading);
+  const { title, hero, art, pages } = opened ? fromSaved(opened) : parseStory(raw, !loading);
   const page = pages[pageIndex];
   // 읽어주기·저장이 끝난 뒤에도 최신 값을 보도록 ref 에도 담아 둬요
   const latest = useRef({ title, pages, loading, pageIndex, images, files, storyId, uid });
@@ -116,13 +117,13 @@ export default function Home() {
       fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hero, scene: p.scene }),
+        body: JSON.stringify({ hero, art, scene: p.scene }),
       })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d: { image: string }) => setImages((s) => ({ ...s, [i]: { status: "done", src: d.image } })))
         .catch(() => setImages((s) => ({ ...s, [i]: { status: "error" } })));
     });
-  }, [pages, hero]);
+  }, [pages, hero, art]);
 
   function stopSpeaking() {
     speakingRef.current = false;
@@ -196,6 +197,7 @@ export default function Home() {
     createStory(fb.db, uid, id, {
       title,
       hero,
+      art,
       input: inputRef.current,
       pages: pages.map(({ text, scene }) => ({ text, scene })),
     })
@@ -206,7 +208,7 @@ export default function Home() {
         history.replaceState(null, "", `?s=${id}`); // 주소를 저장해 두면 나중에 바로 이 책이 열려요
       })
       .catch(() => setSaveState("error"));
-  }, [fb, uid, opened, loading, storyId, title, hero, pages]);
+  }, [fb, uid, opened, loading, storyId, title, hero, art, pages]);
 
   // 주소에 ?s=책번호 가 있으면 그 책을 열어요
   const urlChecked = useRef(false);

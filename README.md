@@ -36,6 +36,7 @@ Claude Sonnet 5.5가 소리 내어 읽으면 3분쯤 걸리는 포근한 한국�
 | `lib/firebase.ts` | Firebase 연결 (설정이 없으면 저장 없이 동작) |
 | `lib/useAuth.ts` | 로그인 상태 관리 |
 | `lib/models.ts` | 쓰는 AI 모델 이름 모음 |
+| `lib/storySeeds.ts` | **이야기 설계도** — 동화마다 줄거리 틀·장소·때·문체·그림 색감을 무작위로 골라 매번 다른 이야기가 나오게 해요 (목록에 한 줄씩 더하면 종류가 늘어요) |
 | `firestore.rules` / `storage.rules` | 보안 규칙 — "자기 책장은 자기만" |
 | `.env` | 내 키와 Firebase 설정 (**GitHub에 안 올라가요**) |
 | `.env.example` | `.env` 를 어떻게 쓰는지 보여주는 예시 |
@@ -55,7 +56,7 @@ Claude Sonnet 5.5가 소리 내어 읽으면 3분쯤 걸리는 포근한 한국�
 Firestore (데이터)
 └─ users/{uid}                         사용자 정보 (이름, 이메일, 손님인지, 로그인 날짜)
    └─ stories/{storyId}                동화 한 권
-        title, hero, input{name,age,likes,today},
+        title, hero, art(그림 색감), input{name,age,likes,today},
         pages[ {text, scene} × 5 ],
         images{ p0: {path,url,contentType,size}, … }   ← 파일 "위치"만
         audio { p0: {path,url,contentType,size}, … }   ← 파일 "위치"만

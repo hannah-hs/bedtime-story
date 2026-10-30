@@ -11,9 +11,10 @@ service cloud.firestore {
 
     // 동화 문서가 정해진 모양인지 확인해요 (이상한 값·너무 큰 값 막기)
     function isValidStory(d) {
-      return d.keys().hasOnly(['title', 'hero', 'input', 'pages', 'images', 'audio', 'models', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['title', 'hero', 'art', 'input', 'pages', 'images', 'audio', 'models', 'createdAt', 'updatedAt'])
         && d.title is string && d.title.size() <= 200
         && d.hero is string && d.hero.size() <= 500
+        && (!('art' in d) || (d.art is string && d.art.size() <= 500))
         && d.input is map
         && d.pages is list && d.pages.size() >= 1 && d.pages.size() <= 10
         && d.images is map && d.images.size() <= 10
