@@ -34,7 +34,7 @@ function parseStory(raw: string, streamDone: boolean) {
 
 export default function Home() {
   const [name, setName] = useState("");
-  const [age, setAge] = useState("5");
+  const [age, setAge] = useState("");
   const [likes, setLikes] = useState("");
   const [today, setToday] = useState("");
   const [raw, setRaw] = useState("");
@@ -279,20 +279,20 @@ export default function Home() {
           <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="예: 하윤" required />
         </div>
         <div className="field">
-          <span className="label" id="age-label">나이</span>
-          <div className="age-chips" role="radiogroup" aria-labelledby="age-label">
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={age === String(n)}
-                className={`chip ${age === String(n) ? "on" : ""}`}
-                onClick={() => setAge(String(n))}
-              >
-                {n}살
-              </button>
-            ))}
+          <label htmlFor="age">나이</label>
+          <div className="age-input">
+            <input
+              id="age"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={12}
+              value={age}
+              onChange={(e) => setAge(e.target.value.slice(0, 2))}
+              placeholder="5"
+              required
+            />
+            <span>살</span>
           </div>
         </div>
         <div className="field">
@@ -304,7 +304,7 @@ export default function Home() {
           <input id="today" value={today} onChange={(e) => setToday(e.target.value)} maxLength={100} placeholder="예: 처음으로 자전거를 탔어요" />
         </div>
         <button className="btn btn-primary" type="submit" disabled={loading}>
-          {loading ? "이야기를 짓고 있어요…" : "옛날 옛적에… 이야기 시작하기"}
+          {loading ? "이야기를 짓고 있어요…" : "이야기 시작하기"}
         </button>
         {error && <p className="error">{error}</p>}
       </form>

@@ -97,15 +97,12 @@ input {
 input::placeholder { color: #b39a7a; }
 input:focus { outline: none; border-bottom-color: var(--accent); }
 
-/* 나이: 잉크 동그라미 */
-.age-chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
-.chip {
-  height: 48px; border-radius: 9999px;
-  font: inherit; font-size: 17px; color: var(--ink);
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid var(--rule); cursor: pointer;
-}
-.chip.on { background: var(--accent); color: var(--parchment); border-color: var(--accent-deep); }
+/* 나이: 짧은 밑줄 칸 + '살' */
+.age-input { display: flex; align-items: baseline; gap: 8px; }
+.age-input input { width: 88px; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+.age-input input::-webkit-outer-spin-button,
+.age-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.age-input span { font-size: 21px; color: var(--ink); }
 
 /* ── 단추 ── */
 .btn {
