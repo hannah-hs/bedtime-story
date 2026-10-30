@@ -54,8 +54,9 @@ export default function Home() {
   const { title, hero, pages } = parseStory(raw, !loading);
   const page = pages[pageIndex];
   // 읽어주기가 다 읽은 뒤 최신 페이지를 보도록 ref 에도 담아 둬요
-  const latest = useRef({ title, pages, loading });
-  latest.current = { title, pages, loading };
+  const latest = useRef({ title, pages, loading, pageIndex });
+  latest.current = { title, pages, loading, pageIndex };
+  const [flip, setFlip] = useState<{ from: number; dir: "next" | "prev"; key: number } | null>(null);
 
   // 페이지를 떠나면 읽어주기도 멈춰요
   useEffect(() => () => audioRef.current?.pause(), []);
@@ -128,6 +129,7 @@ export default function Home() {
     audioCache.current.forEach((v) => v.then(URL.revokeObjectURL, () => {}));
     audioCache.current = new Map();
     setPageIndex(0);
+    setFlip(null);
     requested.current = new Set();
     setLoading(true);
     try {
@@ -167,7 +169,7 @@ export default function Home() {
       return;
     }
     setWaitingFor(null);
-    setPageIndex(i);
+    turnTo(i);
     setVoiceLoading(true);
     try {
       const url = await fetchVoice(pageSpeech(i));
@@ -197,12 +199,49 @@ export default function Home() {
     speakFrom(pageIndex);
   }
 
-  function goTo(i: number) {
-    if (speaking) stopSpeaking();
+  // 책장을 넘겨요: 넘어가는 장이 종이처럼 뒤집히는 애니메이션과 함께
+  function turnTo(i: number) {
+    const from = latest.current.pageIndex;
+    if (i === from) return;
+    setFlip({ from, dir: i > from ? "next" : "prev", key: Date.now() });
     setPageIndex(i);
   }
 
-  const img = images[pageIndex];
+  function goTo(i: number) {
+    if (speaking) stopSpeaking();
+    turnTo(i);
+  }
+
+  // 손가락으로 옆으로 밀어도 책장이 넘어가요
+  const touchX = useRef<number | null>(null);
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    touchX.current = null;
+    if (dx < -50 && nextReady) goTo(pageIndex + 1);
+    else if (dx > 50 && pageIndex > 0) goTo(pageIndex - 1);
+  }
+
+  function renderPage(i: number) {
+    const p = pages[i];
+    const im = images[i];
+    return (
+      <>
+        <div className="picture">
+          {im?.status === "done" && im.src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={im.src} alt={p?.scene ?? ""} />
+          ) : im?.status === "error" ? (
+            <span className="picture-msg">🌙<br />그림을 불러오지 못했어요</span>
+          ) : (
+            <span className="picture-msg twinkle">✨<br />그림을 그리고 있어요…</span>
+          )}
+        </div>
+        <p className="page-text">{p?.text || "이야기를 쓰고 있어요…"}</p>
+      </>
+    );
+  }
+
   const started = raw.length > 0;
   const nextReady = Boolean(pages[pageIndex + 1]?.complete);
   const writingNext = loading && !nextReady;
@@ -244,18 +283,20 @@ export default function Home() {
         <article className="card book" ref={bookRef}>
           <h2>{title || "제목을 짓고 있어요…"}</h2>
 
-          <div className="picture">
-            {img?.status === "done" && img.src ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={img.src} alt={page?.scene ?? ""} />
-            ) : img?.status === "error" ? (
-              <span className="picture-msg">🌙<br />그림을 불러오지 못했어요</span>
-            ) : (
-              <span className="picture-msg twinkle">✨<br />그림을 그리고 있어요…</span>
+          <div
+            className="pages"
+            onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
+            onTouchEnd={onTouchEnd}
+          >
+            {/* 진짜 책처럼: 앞으로 갈 땐 지금 장이 왼쪽으로 넘어가며 다음 장이 드러나고,
+                뒤로 갈 땐 앞 장이 왼쪽에서 넘어와 덮어요 */}
+            {renderPage(flip?.dir === "prev" ? flip.from : pageIndex)}
+            {flip && (
+              <div key={flip.key} className={`flipping ${flip.dir}`} onAnimationEnd={() => setFlip(null)} aria-hidden>
+                {renderPage(flip.dir === "next" ? flip.from : pageIndex)}
+              </div>
             )}
           </div>
-
-          <p className="page-text">{page?.text || "이야기를 쓰고 있어요…"}</p>
 
           <nav className="pager">
             <button className="btn btn-round" type="button" onClick={() => goTo(pageIndex - 1)} disabled={pageIndex === 0} aria-label="이전 장">◀</button>

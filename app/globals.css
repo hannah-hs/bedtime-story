@@ -99,6 +99,35 @@ input:focus, select:focus { outline: none; border: 2px solid var(--star); paddin
 .twinkle { animation: twinkle 1.6s ease-in-out infinite; }
 @keyframes twinkle { 50% { opacity: 0.4; } }
 
+/* 책장 넘기기 */
+.pages { position: relative; perspective: 1800px; touch-action: pan-y; }
+.flipping {
+  position: absolute; inset: 0;
+  background: var(--night-card);
+  overflow: hidden;
+  transform-origin: left center; /* 책등(왼쪽)을 축으로 넘어가요 */
+  backface-visibility: hidden;
+  animation-duration: 0.7s;
+  animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1);
+  animation-fill-mode: forwards;
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+.flipping.next { animation-name: flip-away; }
+.flipping.prev { animation-name: flip-back; }
+/* 넘어가는 종이에 그늘이 졌다가 사라져요 */
+.flipping::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.35), transparent 60%);
+  animation: inherit; animation-name: page-shade;
+}
+@keyframes flip-away { from { transform: rotateY(0deg); } to { transform: rotateY(-180deg); } }
+@keyframes flip-back { from { transform: rotateY(-180deg); } to { transform: rotateY(0deg); } }
+@keyframes page-shade { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .flipping, .flipping::after { animation-duration: 0.01s; }
+}
+
 .page-text {
   font-size: 21px; line-height: 1.8; color: var(--body);
   white-space: pre-wrap; margin: 0; min-height: 7em;
