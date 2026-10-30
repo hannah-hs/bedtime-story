@@ -32,6 +32,17 @@ function parseStory(raw: string, streamDone: boolean) {
   return { title, hero: heroMatch?.[1]?.trim() ?? "", pages };
 }
 
+// 종이 네 귀퉁이의 수채화 꽃 장식 (한 장의 그림을 뒤집어서 네 귀퉁이에 써요)
+function Corners() {
+  return (
+    <>
+      {["tl", "tr", "bl", "br"].map((c) => (
+        <span key={c} className={`corner ${c}`} aria-hidden />
+      ))}
+    </>
+  );
+}
+
 export default function Home() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
@@ -228,6 +239,7 @@ export default function Home() {
     const isEnd = !loading && i === pages.length - 1 && p?.complete;
     return (
       <div className="paper">
+        <Corners />
         <div className="picture">
           {im?.status === "done" && im.src ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -251,7 +263,7 @@ export default function Home() {
         ) : (
           <p className="page-text twinkle">이야기를 쓰고 있어요…</p>
         )}
-        {isEnd ? <p className="the-end">{"❦\uFE0E 끝 ❦\uFE0E"}</p> : <p className="folio">· {i + 1} ·</p>}
+        {isEnd ? <p className="the-end">{"✧ 끝 ✧"}</p> : <p className="folio">· {i + 1} ·</p>}
       </div>
     );
   }
@@ -263,13 +275,17 @@ export default function Home() {
 
   return (
     <main>
-      {/* 옛날 동화집의 표제지(첫 장)처럼 */}
-      <section className="sheet title-page">
+      {/* 밤하늘 위의 표제: 제목과 하늘을 나는 성 */}
+      <header className="hero">
         <p className="kicker">— 오늘 밤, 우리 아이를 위한 —</p>
         <h1>잠자리 동화집</h1>
-        <p className="ornament" aria-hidden>{"❦\uFE0E"}</p>
+        <p className="ornament" aria-hidden>{"✧ ☾ ✧"}</p>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="frontis" src="/images/frontis.webp" alt="" width={1536} height={1024} />
+        <img className="frontis" src="/images/castle.webp" alt="" width={1536} height={1024} />
+      </header>
+
+      <section className="sheet title-page">
+        <Corners />
         <p className="subtitle">아이의 이름과 좋아하는 것을 적어 주시면<br />세상에 하나뿐인 그림 동화를 지어 드려요.</p>
 
       <form className="bookplate" onSubmit={makeStory}>
@@ -324,7 +340,7 @@ export default function Home() {
               {pages.length === 0 ? (
                 <div className="paper opening">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/images/candle.webp" alt="" width={200} height={200} />
+                  <img src="/images/moon.webp" alt="" width={200} height={200} />
                   <p className="twinkle">옛날 옛적에…</p>
                 </div>
               ) : (
