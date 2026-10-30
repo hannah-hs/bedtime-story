@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { STORY_MODEL } from "@/lib/models";
 
 // Vercel이 동화를 다 쓸 때까지 기다려 주는 최대 시간(초)
 export const maxDuration = 60;
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
     .join("\n");
 
   const stream = client.beta.messages.stream({
-    model: "claude-sonnet-5-5",
+    model: STORY_MODEL,
     max_tokens: 16000,
     output_config: { effort: "medium" },
     // 안전 필터가 거절하면 다른 모델이 자동으로 이어서 써 줘요

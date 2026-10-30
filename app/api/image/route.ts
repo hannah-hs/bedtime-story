@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { IMAGE_MODEL } from "@/lib/models";
 
 // 그림 한 장은 오래 걸리면 1~2분까지 걸릴 수 있어요
 export const maxDuration = 120;
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
   try {
     const client = new OpenAI(); // .env 의 OPENAI_API_KEY 를 자동으로 읽어요
     const result = await client.images.generate({
-      model: "gpt-image-2.5-flare",
+      model: IMAGE_MODEL,
       prompt: `${STYLE}\nMain character (keep the same look): ${hero}\nScene: ${scene}`,
       size: "1024x1024",
       quality: "medium",

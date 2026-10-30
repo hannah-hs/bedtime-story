@@ -1,9 +1,7 @@
 import OpenAI from "openai";
+import { SPEECH_MODEL, VOICE } from "@/lib/models";
 
 export const maxDuration = 60;
-
-// 목소리를 바꾸고 싶으면 여기만 고치면 돼요: marin, coral, sage, shimmer, nova ...
-const VOICE = "sage";
 
 const INSTRUCTIONS = `You are reading a Korean bedtime picture book aloud to a young child.
 Speak natural, native Korean with warm, gentle intonation — like a kind mom reading in a dim bedroom.
@@ -22,7 +20,7 @@ export async function POST(req: Request) {
   try {
     const client = new OpenAI();
     const speech = await client.audio.speech.create({
-      model: "gpt-4o-mini-tts",
+      model: SPEECH_MODEL,
       voice: VOICE,
       input: text,
       instructions: INSTRUCTIONS,

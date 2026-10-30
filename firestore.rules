@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// Firestore 보안 규칙: "자기 책장은 자기만" 읽고 쓸 수 있어요.
+// (손님 로그인도 자기 uid 가 있어서 자기 것만 다룰 수 있어요)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // 동화 문서가 정해진 모양인지 확인해요 (이상한 값·너무 큰 값 막기)
+    function isValidStory(d) {
+      return d.keys().hasOnly(['title', 'hero', 'input', 'pages', 'images', 'audio', 'models', 'createdAt', 'updatedAt'])
+        && d.title is string && d.title.size() <= 200
+        && d.hero is string && d.hero.size() <= 500
+        && d.input is map
+        && d.pages is list && d.pages.size() >= 1 && d.pages.size() <= 10
+        && d.images is map && d.images.size() <= 10
+        && d.audio is map && d.audio.size() <= 10
+        && d.models is map
+        && d.updatedAt == request.time;
+    }
+
+    // users/{uid} : 사용자 정보
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'photoURL', 'isAnonymous', 'createdAt', 'lastLoginAt']);
+      allow delete: if false;
+
+      // users/{uid}/stories/{storyId} : 동화 한 권
+      match /stories/{storyId} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && isValidStory(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isOwner(uid)
+          && isValidStory(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt; // 만든 날짜는 못 바꿔요
+      }
+    }
+  }
+}

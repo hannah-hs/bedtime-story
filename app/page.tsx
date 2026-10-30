@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AuthBar } from "@/components/AuthBar";
+import { Library } from "@/components/Library";
+import { createStory, getStory, newStoryId } from "@/lib/db";
+import { downloadFile, downloadText, toBlob } from "@/lib/files";
+import { getFirebase } from "@/lib/firebase";
+import { attachFile } from "@/lib/stories";
+import { pageKey, type FileKind, type PageFiles, type SavedStory, type StoryInput } from "@/lib/types";
+import { useAuth } from "@/lib/useAuth";
 
 type Page = { scene: string; text: string; sceneDone: boolean; complete: boolean };
 type ImageState = { status: "loading" | "done" | "error"; src?: string };
@@ -32,6 +40,16 @@ function parseStory(raw: string, streamDone: boolean) {
   return { title, hero: heroMatch?.[1]?.trim() ?? "", pages };
 }
 
+// 책장에서 다시 연 동화는 이미 다 쓴 상태예요
+function fromSaved(s: SavedStory) {
+  return { title: s.title, hero: s.hero, pages: s.pages.map((p): Page => ({ ...p, sceneDone: true, complete: true })) };
+}
+
+// 파일 이름에 쓸 수 없는 글자를 빼요
+const safeName = (t: string) => t.replace(/[\\/:*?"<>|]/g, "").trim() || "동화";
+
+type SaveState = "idle" | "saving" | "saved" | "error";
+
 export default function Home() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
@@ -48,14 +66,28 @@ export default function Home() {
   const [waitingFor, setWaitingFor] = useState<number | null>(null); // 읽어주다가 다음 장을 기다리는 중
   const bookRef = useRef<HTMLElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCache = useRef(new Map<string, Promise<string>>()); // 글 → 만들어 둔 목소리
+  const audioCache = useRef(new Map<number, Promise<string>>()); // 장 번호 → 목소리 주소
   const [voiceLoading, setVoiceLoading] = useState(false);
 
-  const { title, hero, pages } = parseStory(raw, !loading);
+  // ── 저장 (Firebase) ──
+  const fb = getFirebase(); // 설정이 없으면 null → 저장 없이 예전처럼 동작해요
+  const auth = useAuth();
+  const uid = auth.user?.uid ?? null;
+  const [opened, setOpened] = useState<SavedStory | null>(null); // 책장에서 다시 연 동화
+  const [storyId, setStoryId] = useState<string | null>(null); // 지금 보는 동화의 저장 번호
+  const [files, setFiles] = useState<{ images: PageFiles; audio: PageFiles }>({ images: {}, audio: {} }); // Storage 에 올라간 파일들
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [libraryKey, setLibraryKey] = useState(0);
+  const inputRef = useRef<StoryInput | null>(null); // 이 동화를 만들 때 적은 아이 정보
+  const savingRef = useRef(false);
+  const uploading = useRef(new Set<string>()); // 올리는 중이거나 다 올린 파일
+  const voiceBlobs = useRef(new Map<number, Blob>()); // 아직 안 올린 목소리
+
+  const { title, hero, pages } = opened ? fromSaved(opened) : parseStory(raw, !loading);
   const page = pages[pageIndex];
-  // 읽어주기가 다 읽은 뒤 최신 페이지를 보도록 ref 에도 담아 둬요
-  const latest = useRef({ title, pages, loading, pageIndex });
-  latest.current = { title, pages, loading, pageIndex };
+  // 읽어주기·저장이 끝난 뒤에도 최신 값을 보도록 ref 에도 담아 둬요
+  const latest = useRef({ title, pages, loading, pageIndex, images, files, storyId, uid });
+  latest.current = { title, pages, loading, pageIndex, images, files, storyId, uid };
   const [flip, setFlip] = useState<{ from: number; dir: "next" | "prev"; key: number } | null>(null);
 
   // 페이지를 떠나면 읽어주기도 멈춰요
@@ -100,19 +132,156 @@ export default function Home() {
     setSpeaking(false);
   }
 
-  // OpenAI 목소리로 한 장을 읽은 소리 파일을 받아요 (한 번 받은 건 다시 안 받아요)
-  function fetchVoice(text: string) {
-    let voice = audioCache.current.get(text);
+  // 한 장을 읽은 목소리를 받아요.
+  // 저장해 둔 목소리가 있으면 그걸 쓰고(요금 0원), 없으면 새로 만들어서 저장해 둬요.
+  function fetchVoice(i: number) {
+    let voice = audioCache.current.get(i);
     if (!voice) {
-      voice = fetch("/api/speech", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      }).then(async (r) => (r.ok ? URL.createObjectURL(await r.blob()) : Promise.reject()));
-      voice.catch(() => audioCache.current.delete(text)); // 실패하면 다음에 다시 시도
-      audioCache.current.set(text, voice);
+      const saved = latest.current.files.audio[pageKey(i)];
+      voice = saved
+        ? Promise.resolve(saved.url)
+        : fetch("/api/speech", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: pageSpeech(i) }),
+          }).then(async (r) => {
+            if (!r.ok) throw new Error("speech failed");
+            const blob = await r.blob();
+            voiceBlobs.current.set(i, blob);
+            uploadPending();
+            return URL.createObjectURL(blob);
+          });
+      voice.catch(() => audioCache.current.delete(i)); // 실패하면 다음에 다시 시도
+      audioCache.current.set(i, voice);
     }
     return voice;
+  }
+
+  // 아직 Storage 에 안 올린 그림·목소리를 올리고, 위치를 Firestore 에 적어요
+  function uploadPending() {
+    const { storyId, uid, images } = latest.current;
+    if (!fb || !storyId || !uid) return;
+    const upload = (kind: FileKind, i: number, getBlob: () => Promise<Blob>) => {
+      const key = `${storyId}/${kind}/${i}`;
+      if (uploading.current.has(key)) return;
+      uploading.current.add(key);
+      getBlob()
+        .then((blob) => attachFile(fb, uid, storyId, kind, i, blob))
+        .then((file) => {
+          if (latest.current.storyId !== storyId) return;
+          setFiles((f) => ({ ...f, [kind]: { ...f[kind], [pageKey(i)]: file } }));
+          if (kind === "images" && i === 0) setLibraryKey((k) => k + 1); // 책장 표지 그림
+        })
+        .catch(() => uploading.current.delete(key)); // 다음에 다시 시도
+    };
+    Object.entries(images).forEach(([k, im]) => {
+      if (im.status === "done" && im.src?.startsWith("data:")) upload("images", Number(k), () => toBlob(im.src!));
+    });
+    voiceBlobs.current.forEach((blob, i) => upload("audio", i, async () => blob));
+  }
+
+  // 그림이 새로 나오거나 동화가 저장되면 파일을 올려요
+  useEffect(() => {
+    uploadPending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storyId, uid, images]);
+
+  // 동화를 다 쓰면 Firestore 에 저장해요 (손님도 저장돼요)
+  useEffect(() => {
+    if (!fb || !uid || opened || loading || storyId || savingRef.current) return;
+    if (!title || pages.length === 0 || !inputRef.current) return;
+    savingRef.current = true;
+    const id = newStoryId(fb.db, uid);
+    setSaveState("saving");
+    createStory(fb.db, uid, id, {
+      title,
+      hero,
+      input: inputRef.current,
+      pages: pages.map(({ text, scene }) => ({ text, scene })),
+    })
+      .then(() => {
+        setStoryId(id);
+        setSaveState("saved");
+        setLibraryKey((k) => k + 1);
+        history.replaceState(null, "", `?s=${id}`); // 주소를 저장해 두면 나중에 바로 이 책이 열려요
+      })
+      .catch(() => setSaveState("error"));
+  }, [fb, uid, opened, loading, storyId, title, hero, pages]);
+
+  // 주소에 ?s=책번호 가 있으면 그 책을 열어요
+  const urlChecked = useRef(false);
+  useEffect(() => {
+    if (!fb || !uid || urlChecked.current) return;
+    urlChecked.current = true;
+    const id = new URLSearchParams(location.search).get("s");
+    if (id) getStory(fb.db, uid, id).then((s) => s && openStory(s)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fb, uid]);
+
+  // 다른 사람으로 바뀌면(로그아웃 등) 보던 책을 덮어요
+  const prevUid = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevUid.current && uid !== prevUid.current) closeBook();
+    prevUid.current = uid;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  // 새 책을 펴기 전에 지금 책의 상태를 다 비워요
+  function resetBook() {
+    stopSpeaking();
+    setError("");
+    setImages({});
+    audioCache.current.forEach((v) => v.then((u) => u.startsWith("blob:") && URL.revokeObjectURL(u), () => {}));
+    audioCache.current = new Map();
+    voiceBlobs.current = new Map();
+    setPageIndex(0);
+    setFlip(null);
+    requested.current = new Set();
+    setFiles({ images: {}, audio: {} });
+    setStoryId(null);
+    setSaveState("idle");
+    savingRef.current = false;
+  }
+
+  function closeBook() {
+    resetBook();
+    setOpened(null);
+    setRaw("");
+    history.replaceState(null, "", location.pathname);
+  }
+
+  // 책장에서 고른 동화를 다시 펴요 (그림·목소리는 Storage 에서 불러와요)
+  function openStory(s: SavedStory) {
+    resetBook();
+    setRaw("");
+    setOpened(s);
+    setStoryId(s.id);
+    setSaveState("saved");
+    const saved = { images: s.images ?? {}, audio: s.audio ?? {} };
+    setFiles(saved);
+    const shown: Record<number, ImageState> = {};
+    Object.entries(saved.images).forEach(([k, f]) => {
+      const i = Number(k.slice(1));
+      shown[i] = { status: "done", src: f.url };
+      requested.current.add(i); // 이미 있는 그림은 다시 안 그려요 (없는 그림만 새로 그려요)
+    });
+    setImages(shown);
+    history.replaceState(null, "", `?s=${s.id}`);
+    requestAnimationFrame(() => bookRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  // 내려받기
+  function downloadPicture() {
+    const src = images[pageIndex]?.src;
+    if (src) downloadFile(src, `${safeName(title)}-${pageIndex + 1}.jpg`);
+  }
+  function downloadVoice() {
+    const f = files.audio[pageKey(pageIndex)];
+    if (f) downloadFile(f.url, `${safeName(title)}-${pageIndex + 1}.mp3`);
+  }
+  function downloadStoryText() {
+    const body = pages.map((p, i) => `[${i + 1}]\n${p.text}`).join("\n\n");
+    downloadText(`${title}\n\n${body}\n`, `${safeName(title)}.txt`);
   }
 
   function pageSpeech(i: number) {
@@ -122,15 +291,8 @@ export default function Home() {
 
   async function makeStory(e: React.FormEvent) {
     e.preventDefault();
-    stopSpeaking();
-    setRaw("");
-    setError("");
-    setImages({});
-    audioCache.current.forEach((v) => v.then(URL.revokeObjectURL, () => {}));
-    audioCache.current = new Map();
-    setPageIndex(0);
-    setFlip(null);
-    requested.current = new Set();
+    closeBook();
+    inputRef.current = { name: name.trim(), age: Number(age), likes: likes.trim(), today: today.trim() };
     setLoading(true);
     try {
       const res = await fetch("/api/story", {
@@ -172,14 +334,14 @@ export default function Home() {
     turnTo(i);
     setVoiceLoading(true);
     try {
-      const url = await fetchVoice(pageSpeech(i));
+      const url = await fetchVoice(i);
       if (!speakingRef.current) return;
       setVoiceLoading(false);
       audio.src = url;
       audio.onended = () => speakFrom(i + 1);
       await audio.play();
       // 이 장을 읽는 동안 다음 장 목소리를 미리 받아 둬요
-      if (latest.current.pages[i + 1]?.complete) fetchVoice(pageSpeech(i + 1)).catch(() => {});
+      if (latest.current.pages[i + 1]?.complete) fetchVoice(i + 1).catch(() => {});
     } catch {
       if (!speakingRef.current) return;
       stopSpeaking();
@@ -256,7 +418,8 @@ export default function Home() {
     );
   }
 
-  const started = raw.length > 0;
+  const started = raw.length > 0 || opened !== null;
+  const guest = !auth.user || auth.user.isAnonymous;
   const nextReady = Boolean(pages[pageIndex + 1]?.complete);
   const writingNext = loading && !nextReady;
   const totalPages = loading ? Math.max(EXPECTED_PAGES, pages.length) : pages.length;
@@ -265,6 +428,7 @@ export default function Home() {
     <main>
       {/* 옛날 동화집의 표제지(첫 장)처럼 */}
       <section className="sheet title-page">
+        <AuthBar auth={auth} />
         <p className="kicker">— 오늘 밤, 우리 아이를 위한 —</p>
         <h1>잠자리 동화집</h1>
         <p className="ornament" aria-hidden>{"✦ ✦ ✦"}</p>
@@ -366,7 +530,48 @@ export default function Home() {
               </button>
             </div>
           )}
+
+          {/* 내려받기: 이 장의 그림 · 목소리, 동화 전체 글 */}
+          {page?.complete && (
+            <div className="downloads">
+              {images[pageIndex]?.status === "done" && (
+                <button type="button" className="link-btn" onClick={downloadPicture}>그림 내려받기</button>
+              )}
+              {files.audio[pageKey(pageIndex)] && (
+                <button type="button" className="link-btn" onClick={downloadVoice}>목소리 내려받기</button>
+              )}
+              {!loading && (
+                <button type="button" className="link-btn" onClick={downloadStoryText}>글 내려받기</button>
+              )}
+            </div>
+          )}
+
+          {/* 저장 상태 */}
+          {saveState !== "idle" && (
+            <p className="save-note">
+              {saveState === "saving"
+                ? "책장에 꽂는 중…"
+                : saveState === "error"
+                  ? "책장에 저장하지 못했어요."
+                  : guest
+                    ? "✓ 책장에 꽂아 두었어요 · 로그인하면 다른 기기에서도 볼 수 있어요"
+                    : "✓ 나의 동화 책장에 꽂아 두었어요"}
+            </p>
+          )}
         </section>
+      )}
+
+      {/* 나의 동화 책장 (Firebase 연결 후) */}
+      {fb && uid && (
+        <Library
+          fb={fb}
+          uid={uid}
+          refreshKey={libraryKey}
+          activeId={storyId}
+          disabled={loading}
+          onOpen={openStory}
+          onDeleted={(id) => id === storyId && closeBook()}
+        />
       )}
     </main>
   );
