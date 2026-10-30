@@ -6,6 +6,8 @@ type Page = { scene: string; text: string; sceneDone: boolean; complete: boolean
 type ImageState = { status: "loading" | "done" | "error"; src?: string };
 
 const EXPECTED_PAGES = 5;
+// 소리 없는 아주 짧은 소리 파일 (휴대폰에서 소리 장치를 깨울 때 써요)
+const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 
 // Claude가 보내는 글(제목:/주인공:/===/그림:)을 그림책 페이지로 나눠요
 function parseStory(raw: string, streamDone: boolean) {
@@ -45,6 +47,9 @@ export default function Home() {
   const speakingRef = useRef(false);
   const [waitingFor, setWaitingFor] = useState<number | null>(null); // 읽어주다가 다음 장을 기다리는 중
   const bookRef = useRef<HTMLElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCache = useRef(new Map<string, Promise<string>>()); // 글 → 만들어 둔 목소리
+  const [voiceLoading, setVoiceLoading] = useState(false);
 
   const { title, hero, pages } = parseStory(raw, !loading);
   const page = pages[pageIndex];
@@ -53,7 +58,7 @@ export default function Home() {
   latest.current = { title, pages, loading };
 
   // 페이지를 떠나면 읽어주기도 멈춰요
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  useEffect(() => () => audioRef.current?.pause(), []);
 
   // 첫 장이 나오면 그림책 쪽으로 화면을 내려 줘요
   const firstPageShown = pages.length > 0;
@@ -89,8 +94,29 @@ export default function Home() {
   function stopSpeaking() {
     speakingRef.current = false;
     setWaitingFor(null);
-    window.speechSynthesis?.cancel();
+    setVoiceLoading(false);
+    audioRef.current?.pause();
     setSpeaking(false);
+  }
+
+  // OpenAI 목소리로 한 장을 읽은 소리 파일을 받아요 (한 번 받은 건 다시 안 받아요)
+  function fetchVoice(text: string) {
+    let voice = audioCache.current.get(text);
+    if (!voice) {
+      voice = fetch("/api/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      }).then(async (r) => (r.ok ? URL.createObjectURL(await r.blob()) : Promise.reject()));
+      voice.catch(() => audioCache.current.delete(text)); // 실패하면 다음에 다시 시도
+      audioCache.current.set(text, voice);
+    }
+    return voice;
+  }
+
+  function pageSpeech(i: number) {
+    const { title, pages } = latest.current;
+    return i === 0 ? `${title}. ${pages[i].text}` : pages[i].text;
   }
 
   async function makeStory(e: React.FormEvent) {
@@ -99,6 +125,8 @@ export default function Home() {
     setRaw("");
     setError("");
     setImages({});
+    audioCache.current.forEach((v) => v.then(URL.revokeObjectURL, () => {}));
+    audioCache.current = new Map();
     setPageIndex(0);
     requested.current = new Set();
     setLoading(true);
@@ -128,10 +156,10 @@ export default function Home() {
   }
 
   // 지금 페이지부터 읽고, 다 읽으면 다음 장으로 넘어가며 계속 읽어요
-  function speakFrom(i: number) {
-    const synth = window.speechSynthesis;
-    const { title, pages, loading } = latest.current;
-    if (!synth || !speakingRef.current) return stopSpeaking();
+  async function speakFrom(i: number) {
+    const { pages, loading } = latest.current;
+    const audio = audioRef.current;
+    if (!audio || !speakingRef.current) return stopSpeaking();
     if (!pages[i]?.complete) {
       // 다음 장을 아직 쓰는 중이면 기다렸다가 이어서 읽어요
       if (loading) setWaitingFor(i);
@@ -140,20 +168,30 @@ export default function Home() {
     }
     setWaitingFor(null);
     setPageIndex(i);
-    const utter = new SpeechSynthesisUtterance(i === 0 ? `${title}. ${pages[i].text}` : pages[i].text);
-    utter.lang = "ko-KR";
-    utter.rate = 0.85; // 잠자리용으로 천천히
-    utter.onend = () => speakFrom(i + 1);
-    utter.onerror = () => stopSpeaking();
-    synth.speak(utter);
+    setVoiceLoading(true);
+    try {
+      const url = await fetchVoice(pageSpeech(i));
+      if (!speakingRef.current) return;
+      setVoiceLoading(false);
+      audio.src = url;
+      audio.onended = () => speakFrom(i + 1);
+      await audio.play();
+      // 이 장을 읽는 동안 다음 장 목소리를 미리 받아 둬요
+      if (latest.current.pages[i + 1]?.complete) fetchVoice(pageSpeech(i + 1)).catch(() => {});
+    } catch {
+      if (!speakingRef.current) return;
+      stopSpeaking();
+      setError("목소리를 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.");
+    }
   }
 
   function toggleSpeak() {
-    if (!window.speechSynthesis) {
-      setError("이 브라우저는 읽어주기를 지원하지 않아요.");
-      return;
-    }
     if (speaking) return stopSpeaking();
+    // 휴대폰은 버튼을 누른 순간에만 소리를 켤 수 있어서, 지금 소리 장치를 깨워 둬요
+    const audio = (audioRef.current ??= new Audio());
+    audio.src = SILENCE;
+    audio.play().catch(() => {});
+    setError("");
     speakingRef.current = true;
     setSpeaking(true);
     speakFrom(pageIndex);
@@ -235,7 +273,7 @@ export default function Home() {
           {page?.complete && (
             <div className="actions">
               <button className="btn btn-secondary" type="button" onClick={toggleSpeak}>
-                {speaking ? "⏹ 그만 읽기" : "🔊 읽어주기"}
+                {voiceLoading ? "🔊 목소리 준비 중… (누르면 멈춰요)" : speaking ? "⏹ 그만 읽기" : "🔊 읽어주기"}
               </button>
             </div>
           )}
