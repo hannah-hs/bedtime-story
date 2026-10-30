@@ -2,25 +2,29 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Page = { scene: string; text: string; sceneDone: boolean };
+type Page = { scene: string; text: string; sceneDone: boolean; complete: boolean };
 type ImageState = { status: "loading" | "done" | "error"; src?: string };
 
+const EXPECTED_PAGES = 5;
+
 // Claude가 보내는 글(제목:/주인공:/===/그림:)을 그림책 페이지로 나눠요
-function parseStory(raw: string) {
+function parseStory(raw: string, streamDone: boolean) {
   const [head, ...chunks] = raw.split(/^===\s*$/m);
   const title = head.match(/^제목:\s*(.*)$/m)?.[1]?.trim() ?? "";
   const heroMatch = head.match(/^주인공:\s*(.*)\n/m);
-  const pages: Page[] = chunks.map((chunk) => {
+  const pages: Page[] = chunks.map((chunk, i) => {
     const m = chunk.match(/^\s*그림:\s*(.*)(\n?)/);
-    // "그림:" 줄(또는 아직 덜 온 "그림" 글자)은 본문에서 빼요
-    const isSceneLine = (line: string) => {
+    // "그림:" 줄, 아직 덜 온 "그림" 글자, 덜 온 "===" 줄은 본문에서 빼요
+    const isHidden = (line: string) => {
       const t = line.trim();
-      return t.length > 0 && (t.startsWith("그림:") || "그림:".startsWith(t));
+      return t.length > 0 && (t.startsWith("그림:") || "그림:".startsWith(t) || /^=+$/.test(t));
     };
     return {
       scene: m?.[1]?.trim() ?? "",
       sceneDone: Boolean(m?.[2]), // 그림 줄 끝에 줄바꿈이 왔으면 그림 설명이 다 온 것
-      text: chunk.split("\n").filter((l) => !isSceneLine(l)).join("\n").trim(),
+      text: chunk.split("\n").filter((l) => !isHidden(l)).join("\n").trim(),
+      // 다음 장이 시작됐거나 이야기가 다 끝났으면 이 장은 다 쓴 것
+      complete: i < chunks.length - 1 || streamDone,
     };
   });
   return { title, hero: heroMatch?.[1]?.trim() ?? "", pages };
@@ -39,12 +43,31 @@ export default function Home() {
   const [speaking, setSpeaking] = useState(false);
   const requested = useRef(new Set<number>());
   const speakingRef = useRef(false);
+  const [waitingFor, setWaitingFor] = useState<number | null>(null); // 읽어주다가 다음 장을 기다리는 중
+  const bookRef = useRef<HTMLElement>(null);
 
-  const { title, hero, pages } = parseStory(raw);
+  const { title, hero, pages } = parseStory(raw, !loading);
   const page = pages[pageIndex];
+  // 읽어주기가 다 읽은 뒤 최신 페이지를 보도록 ref 에도 담아 둬요
+  const latest = useRef({ title, pages, loading });
+  latest.current = { title, pages, loading };
 
   // 페이지를 떠나면 읽어주기도 멈춰요
   useEffect(() => () => window.speechSynthesis?.cancel(), []);
+
+  // 첫 장이 나오면 그림책 쪽으로 화면을 내려 줘요
+  const firstPageShown = pages.length > 0;
+  useEffect(() => {
+    if (firstPageShown) bookRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [firstPageShown]);
+
+  // 읽어주다가 기다리던 장이 다 써지면 이어서 읽어요
+  useEffect(() => {
+    if (waitingFor === null || !speakingRef.current) return;
+    if (pages[waitingFor]?.complete) speakFrom(waitingFor);
+    else if (!loading) stopSpeaking(); // 이야기가 끝났으면 읽기도 끝
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, waitingFor, loading]);
 
   // 장면의 그림 설명이 다 오면 바로 그림을 주문해요 (여러 장을 동시에)
   useEffect(() => {
@@ -65,6 +88,7 @@ export default function Home() {
 
   function stopSpeaking() {
     speakingRef.current = false;
+    setWaitingFor(null);
     window.speechSynthesis?.cancel();
     setSpeaking(false);
   }
@@ -106,10 +130,15 @@ export default function Home() {
   // 지금 페이지부터 읽고, 다 읽으면 다음 장으로 넘어가며 계속 읽어요
   function speakFrom(i: number) {
     const synth = window.speechSynthesis;
-    if (!synth || !speakingRef.current || i >= pages.length) {
-      stopSpeaking();
+    const { title, pages, loading } = latest.current;
+    if (!synth || !speakingRef.current) return stopSpeaking();
+    if (!pages[i]?.complete) {
+      // 다음 장을 아직 쓰는 중이면 기다렸다가 이어서 읽어요
+      if (loading) setWaitingFor(i);
+      else stopSpeaking();
       return;
     }
+    setWaitingFor(null);
     setPageIndex(i);
     const utter = new SpeechSynthesisUtterance(i === 0 ? `${title}. ${pages[i].text}` : pages[i].text);
     utter.lang = "ko-KR";
@@ -137,6 +166,9 @@ export default function Home() {
 
   const img = images[pageIndex];
   const started = raw.length > 0;
+  const nextReady = Boolean(pages[pageIndex + 1]?.complete);
+  const writingNext = loading && !nextReady;
+  const totalPages = loading ? Math.max(EXPECTED_PAGES, pages.length) : pages.length;
 
   return (
     <main>
@@ -171,7 +203,7 @@ export default function Home() {
       </form>
 
       {started && (
-        <article className="card book">
+        <article className="card book" ref={bookRef}>
           <h2>{title || "제목을 짓고 있어요…"}</h2>
 
           <div className="picture">
@@ -189,11 +221,18 @@ export default function Home() {
 
           <nav className="pager">
             <button className="btn btn-round" type="button" onClick={() => goTo(pageIndex - 1)} disabled={pageIndex === 0} aria-label="이전 장">◀</button>
-            <span className="page-num">{pages.length ? `${pageIndex + 1} / ${loading ? "…" : pages.length}` : ""}</span>
-            <button className="btn btn-round" type="button" onClick={() => goTo(pageIndex + 1)} disabled={pageIndex >= pages.length - 1} aria-label="다음 장">▶</button>
+            <span className="page-num">{pages.length ? `${pageIndex + 1} / ${totalPages}` : ""}</span>
+            <button className="btn btn-round" type="button" onClick={() => goTo(pageIndex + 1)} disabled={!nextReady} aria-label="다음 장">▶</button>
           </nav>
 
-          {!loading && pages.length > 0 && (
+          {/* 지금 장을 보는 동안 뒤에서 다음 장을 쓰고 있어요 */}
+          {writingNext && pages.length > 0 && (
+            <p className="status twinkle">
+              {waitingFor !== null ? "🔊 다음 장이 다 써지면 이어서 읽어 줄게요…" : "✍️ 다음 장을 쓰고 있어요…"}
+            </p>
+          )}
+
+          {page?.complete && (
             <div className="actions">
               <button className="btn btn-secondary" type="button" onClick={toggleSpeak}>
                 {speaking ? "⏹ 그만 읽기" : "🔊 읽어주기"}

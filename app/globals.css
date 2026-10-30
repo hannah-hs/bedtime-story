@@ -106,6 +106,7 @@ input:focus, select:focus { outline: none; border: 2px solid var(--star); paddin
 
 .pager { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; }
 .page-num { color: var(--muted); font-size: 16px; }
+.status { color: var(--muted); font-size: 16px; text-align: center; margin: 12px 0 0; }
 
 .actions { display: flex; justify-content: center; margin-top: 20px; }
 .error { color: var(--error); margin-top: 16px; }
