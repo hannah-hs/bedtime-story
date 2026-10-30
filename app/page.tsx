@@ -233,13 +233,25 @@ export default function Home() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={im.src} alt={p?.scene ?? ""} />
           ) : im?.status === "error" ? (
-            <span className="picture-msg">🌙<br />그림을 불러오지 못했어요</span>
+            <span className="picture-msg">그림을 불러오지 못했어요</span>
           ) : (
-            <span className="picture-msg twinkle">✨<br />그림을 그리고 있어요…</span>
+            <span className="picture-msg twinkle">그림을 그리고 있어요…</span>
           )}
         </div>
-        <p className="page-text">{p?.text || "이야기를 쓰고 있어요…"}</p>
-        {isEnd ? <p className="the-end">끝 · 잘 자요 🌙</p> : <p className="folio">— {i + 1} —</p>}
+        {p?.text ? (
+          // 큰 장식 첫 글자는 따옴표 같은 기호로 시작하는 장에는 넣지 않아요
+          /^["'“‘(\[]/.test(p.text) ? (
+            <p className="page-text">{p.text}</p>
+          ) : (
+            <p className="page-text">
+              <span className="dropcap">{p.text[0]}</span>
+              {p.text.slice(1)}
+            </p>
+          )
+        ) : (
+          <p className="page-text twinkle">이야기를 쓰고 있어요…</p>
+        )}
+        {isEnd ? <p className="the-end">{"❦\uFE0E 끝 ❦\uFE0E"}</p> : <p className="folio">· {i + 1} ·</p>}
       </div>
     );
   }
@@ -251,20 +263,23 @@ export default function Home() {
 
   return (
     <main>
-      <header className="hero">
+      {/* 옛날 동화집의 표제지(첫 장)처럼 */}
+      <section className="sheet title-page">
+        <p className="kicker">— 오늘 밤, 우리 아이를 위한 —</p>
+        <h1>잠자리 동화집</h1>
+        <p className="ornament" aria-hidden>{"❦\uFE0E"}</p>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="mascot" src="/images/mascot.webp" alt="" width={168} height={168} />
-        <h1>우리 아이 잠자리 동화</h1>
-        <p className="subtitle">이름이랑 좋아하는 걸 알려주면<br />오늘 밤 읽을 그림 동화책을 만들어 줄게요</p>
-      </header>
+        <img className="frontis" src="/images/frontis.webp" alt="" width={1536} height={1024} />
+        <p className="subtitle">아이의 이름과 좋아하는 것을 적어 주시면<br />세상에 하나뿐인 그림 동화를 지어 드려요.</p>
 
-      <form className="card form-card" onSubmit={makeStory}>
+      <form className="bookplate" onSubmit={makeStory}>
+        <p className="bookplate-head">이 책의 주인공</p>
         <div className="field">
-          <label htmlFor="name"><span className="label-icon">🧒</span>아이 이름</label>
+          <label htmlFor="name">아이 이름</label>
           <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="예: 하윤" required />
         </div>
         <div className="field">
-          <span className="label" id="age-label"><span className="label-icon">🎂</span>나이</span>
+          <span className="label" id="age-label">나이</span>
           <div className="age-chips" role="radiogroup" aria-labelledby="age-label">
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
               <button
@@ -281,18 +296,19 @@ export default function Home() {
           </div>
         </div>
         <div className="field">
-          <label htmlFor="likes"><span className="label-icon">💛</span>좋아하는 것</label>
+          <label htmlFor="likes">좋아하는 것</label>
           <input id="likes" value={likes} onChange={(e) => setLikes(e.target.value)} maxLength={100} placeholder="예: 공룡, 딸기, 비행기" required />
         </div>
         <div className="field">
-          <label htmlFor="today"><span className="label-icon">🌈</span>오늘 있었던 일 <span className="optional">(안 써도 돼요)</span></label>
+          <label htmlFor="today">오늘 있었던 일 <span className="optional">(안 써도 돼요)</span></label>
           <input id="today" value={today} onChange={(e) => setToday(e.target.value)} maxLength={100} placeholder="예: 처음으로 자전거를 탔어요" />
         </div>
         <button className="btn btn-primary" type="submit" disabled={loading}>
-          {loading ? "✍️ 동화를 쓰고 있어요…" : "🌙 동화책 만들기"}
+          {loading ? "이야기를 짓고 있어요…" : "옛날 옛적에… 이야기 시작하기"}
         </button>
         {error && <p className="error">{error}</p>}
       </form>
+      </section>
 
       {started && (
         <section className="book-area" ref={bookRef}>
@@ -308,8 +324,8 @@ export default function Home() {
               {pages.length === 0 ? (
                 <div className="paper opening">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/images/book-sleep.webp" alt="" width={200} height={200} />
-                  <p className="twinkle">동화책을 펼치고 있어요…</p>
+                  <img src="/images/candle.webp" alt="" width={200} height={200} />
+                  <p className="twinkle">옛날 옛적에…</p>
                 </div>
               ) : (
                 <>
@@ -339,14 +355,14 @@ export default function Home() {
           {/* 지금 장을 보는 동안 뒤에서 다음 장을 쓰고 있어요 */}
           {writingNext && pages.length > 0 && (
             <p className="status twinkle">
-              {waitingFor !== null ? "🔊 다음 장이 다 써지면 이어서 읽어 줄게요…" : "✍️ 다음 장을 쓰고 있어요…"}
+              {waitingFor !== null ? "다음 장이 다 써지면 이어서 읽어 줄게요…" : "다음 장을 쓰고 있어요…"}
             </p>
           )}
 
           {page?.complete && (
             <div className="actions">
               <button className={`btn btn-read ${speaking ? "on" : ""}`} type="button" onClick={toggleSpeak}>
-                {voiceLoading ? "🔊 목소리 준비 중… (누르면 멈춰요)" : speaking ? "⏹ 그만 읽기" : "🔊 읽어주기"}
+                {voiceLoading ? "목소리 준비 중… (누르면 멈춰요)" : speaking ? "■ 그만 읽기" : "♪ 소리 내어 읽어 주기"}
               </button>
             </div>
           )}

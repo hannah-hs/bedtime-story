@@ -3,8 +3,9 @@ import OpenAI from "openai";
 // 그림 한 장은 오래 걸리면 1~2분까지 걸릴 수 있어요
 export const maxDuration = 120;
 
+// 옛날 이솝 우화 · 고전 동화책 그림 느낌
 const STYLE =
-  "Soft watercolor children's picture book illustration, bedtime mood, gentle night colors, warm cozy light, cute and friendly, no text, no letters.";
+  "Classic early 20th century fable and fairy tale book illustration: fine sepia ink linework with delicate cross-hatching, softly washed muted watercolor (sage green, ochre, faded rose, dusty blue), aged cream paper tones. Gentle bedtime mood, warm lantern or moonlight, cute and friendly characters. No text, no letters.";
 
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
