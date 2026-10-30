@@ -225,8 +225,9 @@ export default function Home() {
   function renderPage(i: number) {
     const p = pages[i];
     const im = images[i];
+    const isEnd = !loading && i === pages.length - 1 && p?.complete;
     return (
-      <>
+      <div className="paper">
         <div className="picture">
           {im?.status === "done" && im.src ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -238,7 +239,8 @@ export default function Home() {
           )}
         </div>
         <p className="page-text">{p?.text || "이야기를 쓰고 있어요…"}</p>
-      </>
+        {isEnd ? <p className="the-end">끝 · 잘 자요 🌙</p> : <p className="folio">— {i + 1} —</p>}
+      </div>
     );
   }
 
@@ -249,58 +251,88 @@ export default function Home() {
 
   return (
     <main>
-      <h1>🌙 우리 아이 잠자리 동화</h1>
-      <p className="subtitle">이름과 좋아하는 것을 알려주면 그림이 있는 3분 동화책을 만들어 드려요.</p>
+      <header className="hero">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="mascot" src="/images/mascot.webp" alt="" width={168} height={168} />
+        <h1>우리 아이 잠자리 동화</h1>
+        <p className="subtitle">이름이랑 좋아하는 걸 알려주면<br />오늘 밤 읽을 그림 동화책을 만들어 줄게요</p>
+      </header>
 
-      <form className="card" onSubmit={makeStory}>
+      <form className="card form-card" onSubmit={makeStory}>
         <div className="field">
-          <label htmlFor="name">아이 이름</label>
+          <label htmlFor="name"><span className="label-icon">🧒</span>아이 이름</label>
           <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="예: 하윤" required />
         </div>
         <div className="field">
-          <label htmlFor="age">나이</label>
-          <select id="age" value={age} onChange={(e) => setAge(e.target.value)}>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>{n}살</option>
+          <span className="label" id="age-label"><span className="label-icon">🎂</span>나이</span>
+          <div className="age-chips" role="radiogroup" aria-labelledby="age-label">
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={age === String(n)}
+                className={`chip ${age === String(n) ? "on" : ""}`}
+                onClick={() => setAge(String(n))}
+              >
+                {n}살
+              </button>
             ))}
-          </select>
+          </div>
         </div>
         <div className="field">
-          <label htmlFor="likes">좋아하는 것</label>
+          <label htmlFor="likes"><span className="label-icon">💛</span>좋아하는 것</label>
           <input id="likes" value={likes} onChange={(e) => setLikes(e.target.value)} maxLength={100} placeholder="예: 공룡, 딸기, 비행기" required />
         </div>
         <div className="field">
-          <label htmlFor="today">오늘 있었던 일 <span className="optional">(선택)</span></label>
+          <label htmlFor="today"><span className="label-icon">🌈</span>오늘 있었던 일 <span className="optional">(안 써도 돼요)</span></label>
           <input id="today" value={today} onChange={(e) => setToday(e.target.value)} maxLength={100} placeholder="예: 처음으로 자전거를 탔어요" />
         </div>
         <button className="btn btn-primary" type="submit" disabled={loading}>
-          {loading ? "동화를 쓰고 있어요…" : "동화 만들기"}
+          {loading ? "✍️ 동화를 쓰고 있어요…" : "🌙 동화책 만들기"}
         </button>
         {error && <p className="error">{error}</p>}
       </form>
 
       {started && (
-        <article className="card book" ref={bookRef}>
-          <h2>{title || "제목을 짓고 있어요…"}</h2>
+        <section className="book-area" ref={bookRef}>
+          {/* 하드커버 동화책: 파란 천 표지 위에 크림색 종이가 펼쳐져 있어요 */}
+          <article className="book">
+            <h2 className="book-title">{title || "제목을 짓고 있어요…"}</h2>
 
-          <div
-            className="pages"
-            onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
-            onTouchEnd={onTouchEnd}
-          >
-            {/* 진짜 책처럼: 앞으로 갈 땐 지금 장이 왼쪽으로 넘어가며 다음 장이 드러나고,
-                뒤로 갈 땐 앞 장이 왼쪽에서 넘어와 덮어요 */}
-            {renderPage(flip?.dir === "prev" ? flip.from : pageIndex)}
-            {flip && (
-              <div key={flip.key} className={`flipping ${flip.dir}`} onAnimationEnd={() => setFlip(null)} aria-hidden>
-                {renderPage(flip.dir === "next" ? flip.from : pageIndex)}
-              </div>
-            )}
-          </div>
+            <div
+              className="pages"
+              onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
+              onTouchEnd={onTouchEnd}
+            >
+              {pages.length === 0 ? (
+                <div className="paper opening">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/book-sleep.webp" alt="" width={200} height={200} />
+                  <p className="twinkle">동화책을 펼치고 있어요…</p>
+                </div>
+              ) : (
+                <>
+                  {/* 진짜 책처럼: 앞으로 갈 땐 지금 장이 왼쪽으로 넘어가며 다음 장이 드러나고,
+                      뒤로 갈 땐 앞 장이 왼쪽에서 넘어와 덮어요 */}
+                  {renderPage(flip?.dir === "prev" ? flip.from : pageIndex)}
+                  {flip && (
+                    <div key={flip.key} className={`flipping ${flip.dir}`} onAnimationEnd={() => setFlip(null)} aria-hidden>
+                      {renderPage(flip.dir === "next" ? flip.from : pageIndex)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </article>
 
           <nav className="pager">
             <button className="btn btn-round" type="button" onClick={() => goTo(pageIndex - 1)} disabled={pageIndex === 0} aria-label="이전 장">◀</button>
-            <span className="page-num">{pages.length ? `${pageIndex + 1} / ${totalPages}` : ""}</span>
+            <span className="page-dots" aria-label={pages.length ? `${pageIndex + 1}장 / ${totalPages}장` : undefined}>
+              {Array.from({ length: totalPages }, (_, i) => (
+                <span key={i} className={`dot ${i === pageIndex ? "on" : ""} ${pages[i]?.complete ? "ready" : ""}`} />
+              ))}
+            </span>
             <button className="btn btn-round" type="button" onClick={() => goTo(pageIndex + 1)} disabled={!nextReady} aria-label="다음 장">▶</button>
           </nav>
 
@@ -313,12 +345,12 @@ export default function Home() {
 
           {page?.complete && (
             <div className="actions">
-              <button className="btn btn-secondary" type="button" onClick={toggleSpeak}>
+              <button className={`btn btn-read ${speaking ? "on" : ""}`} type="button" onClick={toggleSpeak}>
                 {voiceLoading ? "🔊 목소리 준비 중… (누르면 멈춰요)" : speaking ? "⏹ 그만 읽기" : "🔊 읽어주기"}
               </button>
             </div>
           )}
-        </article>
+        </section>
       )}
     </main>
   );
