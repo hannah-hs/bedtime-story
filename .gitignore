@@ -18,3 +18,8 @@ voice-samples/
 
 # 지금까지 그린 장식 그림 모음 (내 컴퓨터용)
 drawings/
+
+# Firebase 비공개 키 (서비스 계정) — 절대 GitHub에 올리면 안 돼요
+firebase/
+*firebase-adminsdk*.json
+serviceAccount*.json

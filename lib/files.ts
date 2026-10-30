@@ -4,10 +4,18 @@
 import { deleteObject, getDownloadURL, ref, uploadBytes, type FirebaseStorage } from "firebase/storage";
 import type { FileKind, StoredFile } from "./types";
 
-const EXT: Record<FileKind, string> = { images: "jpg", audio: "mp3" };
+const DEFAULT_TYPE: Record<FileKind, string> = { images: "image/jpeg", audio: "audio/mpeg" };
+const EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "audio/mpeg": "mp3",
+  "audio/wav": "wav",
+};
 
-export const filePath = (uid: string, storyId: string, kind: FileKind, index: number) =>
-  `users/${uid}/stories/${storyId}/${kind}/page-${index + 1}.${EXT[kind]}`;
+// 파일 종류에 맞는 확장자를 붙여요 (그림은 보통 jpg, 목소리는 mp3)
+export const filePath = (uid: string, storyId: string, kind: FileKind, index: number, contentType: string) =>
+  `users/${uid}/stories/${storyId}/${kind}/page-${index + 1}.${EXT[contentType] ?? (kind === "images" ? "jpg" : "mp3")}`;
 
 /** 파일을 Storage 에 올리고, 문서에 적을 정보를 돌려줘요 */
 export async function uploadFile(
@@ -18,9 +26,9 @@ export async function uploadFile(
   index: number,
   blob: Blob,
 ): Promise<StoredFile> {
-  const path = filePath(uid, storyId, kind, index);
+  const contentType = blob.type || DEFAULT_TYPE[kind];
+  const path = filePath(uid, storyId, kind, index, contentType);
   const fileRef = ref(storage, path);
-  const contentType = blob.type || (kind === "images" ? "image/jpeg" : "audio/mpeg");
   // 한 번 만든 그림·목소리는 바뀌지 않으니 브라우저가 오래 기억해도 돼요
   await uploadBytes(fileRef, blob, { contentType, cacheControl: "public, max-age=31536000" });
   return { path, url: await getDownloadURL(fileRef), contentType, size: blob.size };
