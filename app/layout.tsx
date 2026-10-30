@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "아이 이름·나이·좋아하는 것으로 3분짜리 그림 동화책을 만들어요.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#5d64b4" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#22333f" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
