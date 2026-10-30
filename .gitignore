@@ -15,3 +15,6 @@ next-env.d.ts
 
 # 목소리 샘플 (내 컴퓨터용)
 voice-samples/
+
+# 지금까지 그린 장식 그림 모음 (내 컴퓨터용)
+drawings/

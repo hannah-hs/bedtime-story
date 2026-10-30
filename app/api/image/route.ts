@@ -3,9 +3,9 @@ import OpenAI from "openai";
 // 그림 한 장은 오래 걸리면 1~2분까지 걸릴 수 있어요
 export const maxDuration = 120;
 
-// 꿈꾸는 동화 나라 수채화 느낌 (사이트 장식과 같은 화풍)
+// 옛날 이솝 우화 · 고전 동화책 그림 느낌
 const STYLE =
-  "Dreamy fairy tale storybook watercolor illustration: soft pastel periwinkle, lavender, blush pink, dusty teal and cream, delicate fine ink details, gentle glow of moonlight or lantern light, enchanted and cozy bedtime mood, cute and friendly characters. No text, no letters.";
+  "Classic early 20th century fable and fairy tale book illustration: fine sepia ink linework with delicate cross-hatching, softly washed muted watercolor (sage green, ochre, faded rose, dusty blue), aged cream paper tones. Gentle bedtime mood, warm lantern or moonlight, cute and friendly characters. No text, no letters.";
 
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
