@@ -24,6 +24,7 @@ function parseStory(raw: string, streamDone: boolean) {
   const title = head.match(/^제목:\s*(.*)$/m)?.[1]?.trim() ?? "";
   const heroMatch = head.match(/^주인공:\s*(.*)\n/m);
   const artMatch = head.match(/^화풍:\s*(.*)\n/m); // 이 책의 그림 색감과 빛
+  const castMatch = head.match(/^등장인물:\s*(.*)\n/m); // 주인공 말고 계속 나오는 인물들의 생김새
   const pages: Page[] = chunks.map((chunk, i) => {
     const m = chunk.match(/^\s*그림:\s*(.*)(\n?)/);
     // "그림:" 줄, 아직 덜 온 "그림" 글자, 덜 온 "===" 줄은 본문에서 빼요
@@ -39,12 +40,27 @@ function parseStory(raw: string, streamDone: boolean) {
       complete: i < chunks.length - 1 || streamDone,
     };
   });
-  return { title, hero: heroMatch?.[1]?.trim() ?? "", art: artMatch?.[1]?.trim() ?? "", pages };
+  const cast = castMatch?.[1]?.trim() ?? "";
+  return {
+    title,
+    hero: heroMatch?.[1]?.trim() ?? "",
+    art: artMatch?.[1]?.trim() ?? "",
+    cast: /^none\.?$/i.test(cast) ? "" : cast,
+    headerDone: chunks.length > 0, // 첫 장(===)이 시작됐으면 머리말(주인공·등장인물)은 다 온 것
+    pages,
+  };
 }
 
 // 책장에서 다시 연 동화는 이미 다 쓴 상태예요
 function fromSaved(s: SavedStory) {
-  return { title: s.title, hero: s.hero, art: s.art ?? "", pages: s.pages.map((p): Page => ({ ...p, sceneDone: true, complete: true })) };
+  return {
+    title: s.title,
+    hero: s.hero,
+    art: s.art ?? "",
+    cast: s.cast ?? "",
+    headerDone: true,
+    pages: s.pages.map((p): Page => ({ ...p, sceneDone: true, complete: true })),
+  };
 }
 
 // 파일 이름에 쓸 수 없는 글자를 빼요
@@ -67,6 +83,8 @@ export default function Home() {
   const [speaking, setSpeaking] = useState(false);
   const requested = useRef(new Set<number>());
   const inFlight = useRef(new Set<number>()); // 지금 그리는 중인 그림 (장 번호)
+  const [sheet, setSheet] = useState<ImageState | null>(null); // 등장인물 설정화 (장면 그림이 이걸 보고 인물을 똑같이 그려요)
+  const sheetRequested = useRef(false);
   const speakingRef = useRef(false);
   const [waitingFor, setWaitingFor] = useState<number | null>(null); // 읽어주다가 다음 장을 기다리는 중
   const bookRef = useRef<HTMLElement>(null);
@@ -88,7 +106,7 @@ export default function Home() {
   const uploading = useRef(new Set<string>()); // 올리는 중이거나 다 올린 파일
   const voiceBlobs = useRef(new Map<number, Blob>()); // 아직 안 올린 목소리
 
-  const { title, hero, art, pages } = opened ? fromSaved(opened) : parseStory(raw, !loading);
+  const { title, hero, art, cast, headerDone, pages } = opened ? fromSaved(opened) : parseStory(raw, !loading);
   const page = pages[pageIndex];
   // 읽어주기·저장이 끝난 뒤에도 최신 값을 보도록 ref 에도 담아 둬요
   const latest = useRef({ title, pages, loading, pageIndex, images, files, storyId, uid });
@@ -112,8 +130,27 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, waitingFor, loading]);
 
-  // 장면의 그림 설명이 다 오면 앞 장부터 차례로 그림을 주문해요 (한 번에 3장까지)
+  // 머리말(주인공·등장인물)이 오면 등장인물 설정화부터 그려요
   useEffect(() => {
+    if (opened || !headerDone || sheetRequested.current) return;
+    sheetRequested.current = true;
+    const book = inFlight.current;
+    setSheet({ status: "loading" });
+    fetch("/api/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "sheet", hero, art, cast }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { image: string }) => inFlight.current === book && setSheet({ status: "done", src: d.image }))
+      .catch(() => inFlight.current === book && setSheet({ status: "error" })); // 실패하면 설정화 없이 그려요
+  }, [opened, headerDone, hero, art, cast]);
+
+  // 장면의 그림 설명이 다 오면 앞 장부터 차례로 그림을 주문해요 (한 번에 3장까지)
+  // 새로 쓰는 동화는 설정화가 나올 때까지 기다렸다가, 설정화를 보고 그려요
+  useEffect(() => {
+    if (!opened && (!sheet || sheet.status === "loading")) return;
+    const reference = sheet?.status === "done" ? sheet.src : undefined;
     const drawing = inFlight.current; // 이 책에서 그리는 중인 그림들
     for (let i = 0; i < pages.length && drawing.size < MAX_IMAGE_REQUESTS; i++) {
       const p = pages[i];
@@ -129,13 +166,13 @@ export default function Home() {
       fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hero, art, scene: p.scene }),
+        body: JSON.stringify({ kind: "page", hero, art, cast, scene: p.scene, reference }),
       })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d: { image: string }) => done({ status: "done", src: d.image }))
         .catch(() => done({ status: "error" }));
     }
-  }, [pages, hero, art]);
+  }, [pages, hero, art, cast, sheet, opened]);
 
   function stopSpeaking() {
     speakingRef.current = false;
@@ -210,6 +247,7 @@ export default function Home() {
       title,
       hero,
       art,
+      cast,
       input: inputRef.current,
       pages: pages.map(({ text, scene }) => ({ text, scene })),
     })
@@ -220,7 +258,7 @@ export default function Home() {
         history.replaceState(null, "", `?s=${id}`); // 주소를 저장해 두면 나중에 바로 이 책이 열려요
       })
       .catch(() => setSaveState("error"));
-  }, [fb, uid, opened, loading, storyId, title, hero, art, pages]);
+  }, [fb, uid, opened, loading, storyId, title, hero, art, cast, pages]);
 
   // 주소에 ?s=책번호 가 있으면 그 책을 열어요
   const urlChecked = useRef(false);
@@ -252,6 +290,8 @@ export default function Home() {
     setFlip(null);
     requested.current = new Set();
     inFlight.current = new Set();
+    setSheet(null);
+    sheetRequested.current = false;
     setFiles({ images: {}, audio: {} });
     setStoryId(null);
     setSaveState("idle");
@@ -413,7 +453,7 @@ export default function Home() {
           ) : im?.status === "error" ? (
             <span className="picture-msg">그림을 불러오지 못했어요</span>
           ) : (
-            <span className="picture-msg twinkle">그림을 그리고 있어요…</span>
+            <span className="picture-msg twinkle">{sheet?.status === "loading" && !opened ? "등장인물부터 그리고 있어요…" : "그림을 그리고 있어요…"}</span>
           )}
         </div>
         {p?.text ? (

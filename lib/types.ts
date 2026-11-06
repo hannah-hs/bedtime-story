@@ -49,6 +49,7 @@ export type StoryDoc = {
   title: string;
   hero: string; // 그림마다 주인공이 같은 모습이 되도록 쓰는 영어 묘사
   art?: string; // 이 책 그림의 색감과 빛 (영어). 이 기능 전에 만든 동화에는 없어요
+  cast?: string; // 주인공 말고 계속 나오는 인물들의 생김새 (영어, "이름 = 생김새; …")
   input: StoryInput;
   pages: StoryPage[];
   images: PageFiles; // 장면 그림 (Storage 위치)

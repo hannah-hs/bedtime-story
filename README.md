@@ -57,7 +57,7 @@ Claude Sonnet 5.5가 소리 내어 읽으면 3분쯤 걸리는 포근한 한국�
 Firestore (데이터)
 └─ users/{uid}                         사용자 정보 (이름, 이메일, 손님인지, 로그인 날짜)
    └─ stories/{storyId}                동화 한 권
-        title, hero, art(그림 색감), input{name,age,likes,today},
+        title, hero, art(그림 색감), cast(등장인물 생김새), input{name,age,likes,today,pages},
         pages[ {text, scene} × 5 ],
         images{ p0: {path,url,contentType,size}, … }   ← 파일 "위치"만
         audio { p0: {path,url,contentType,size}, … }   ← 파일 "위치"만
@@ -71,6 +71,7 @@ Storage (파일)
 
 - 동화 글을 다 쓰면 → **Firestore**에 저장돼요.
 - 그림이 하나 나올 때마다 → **Storage**에 올리고, 그 위치를 Firestore 문서에 적어요.
+- 그림은 먼저 **등장인물 설정화**(주인공과 친구들을 한 줄로 세운 그림)를 한 장 그리고, 모든 장면을 그 설정화를 보고 그려서 인물이 장마다 같은 모습으로 나와요. (설정화는 저장하지 않아요)
 - 🔊 읽어주기로 한 번 들은 장의 목소리도 Storage에 저장돼요. 다음에 다시 들을 때는 **새로 만들지 않아서 요금이 안 들어요.**
 - 동화를 지우면 Storage 파일 → Firestore 문서 순서로 함께 지워져요.
 
