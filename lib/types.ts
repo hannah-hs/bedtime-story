@@ -20,6 +20,7 @@ export type StoryInput = {
   age: number;
   likes: string;
   today: string;
+  pages?: number; // 고른 이야기 길이(장 수). 이 기능 전에 만든 동화에는 없어요
 };
 
 /** 동화 한 장의 글 */

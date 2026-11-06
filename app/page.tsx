@@ -9,11 +9,12 @@ import { getFirebase } from "@/lib/firebase";
 import { attachFile } from "@/lib/stories";
 import { pageKey, type FileKind, type PageFiles, type SavedStory, type StoryInput } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { DEFAULT_PAGES, LENGTHS, readingMinutes } from "@/lib/storyOptions";
 
 type Page = { scene: string; text: string; sceneDone: boolean; complete: boolean };
 type ImageState = { status: "loading" | "done" | "error"; src?: string };
 
-const EXPECTED_PAGES = 5;
+const MAX_IMAGE_REQUESTS = 3; // 그림은 한 번에 3장까지만 그려요 (10장을 한꺼번에 주문하면 거절될 수 있어요)
 // 소리 없는 아주 짧은 소리 파일 (휴대폰에서 소리 장치를 깨울 때 써요)
 const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 
@@ -54,6 +55,8 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 export default function Home() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
+  const [length, setLength] = useState(DEFAULT_PAGES); // 이야기 길이 (장 수)
+  const [expectedPages, setExpectedPages] = useState(DEFAULT_PAGES); // 지금 쓰고 있는 동화의 장 수
   const [likes, setLikes] = useState("");
   const [today, setToday] = useState("");
   const [raw, setRaw] = useState("");
@@ -63,6 +66,7 @@ export default function Home() {
   const [images, setImages] = useState<Record<number, ImageState>>({});
   const [speaking, setSpeaking] = useState(false);
   const requested = useRef(new Set<number>());
+  const inFlight = useRef(new Set<number>()); // 지금 그리는 중인 그림 (장 번호)
   const speakingRef = useRef(false);
   const [waitingFor, setWaitingFor] = useState<number | null>(null); // 읽어주다가 다음 장을 기다리는 중
   const bookRef = useRef<HTMLElement>(null);
@@ -108,21 +112,29 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, waitingFor, loading]);
 
-  // 장면의 그림 설명이 다 오면 바로 그림을 주문해요 (여러 장을 동시에)
+  // 장면의 그림 설명이 다 오면 앞 장부터 차례로 그림을 주문해요 (한 번에 3장까지)
   useEffect(() => {
-    pages.forEach((p, i) => {
-      if (!p.sceneDone || !p.scene || requested.current.has(i)) return;
+    const drawing = inFlight.current; // 이 책에서 그리는 중인 그림들
+    for (let i = 0; i < pages.length && drawing.size < MAX_IMAGE_REQUESTS; i++) {
+      const p = pages[i];
+      if (!p.sceneDone || !p.scene || requested.current.has(i)) continue;
       requested.current.add(i);
+      drawing.add(i);
       setImages((s) => ({ ...s, [i]: { status: "loading" } }));
+      const done = (next: ImageState) => {
+        drawing.delete(i);
+        if (inFlight.current !== drawing) return; // 그새 다른 책을 폈으면 버려요
+        setImages((s) => ({ ...s, [i]: next })); // → 화면이 다시 그려지면서 다음 그림을 주문해요
+      };
       fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hero, art, scene: p.scene }),
       })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((d: { image: string }) => setImages((s) => ({ ...s, [i]: { status: "done", src: d.image } })))
-        .catch(() => setImages((s) => ({ ...s, [i]: { status: "error" } })));
-    });
+        .then((d: { image: string }) => done({ status: "done", src: d.image }))
+        .catch(() => done({ status: "error" }));
+    }
   }, [pages, hero, art]);
 
   function stopSpeaking() {
@@ -239,6 +251,7 @@ export default function Home() {
     setPageIndex(0);
     setFlip(null);
     requested.current = new Set();
+    inFlight.current = new Set();
     setFiles({ images: {}, audio: {} });
     setStoryId(null);
     setSaveState("idle");
@@ -294,13 +307,14 @@ export default function Home() {
   async function makeStory(e: React.FormEvent) {
     e.preventDefault();
     closeBook();
-    inputRef.current = { name: name.trim(), age: Number(age), likes: likes.trim(), today: today.trim() };
+    inputRef.current = { name: name.trim(), age: Number(age), likes: likes.trim(), today: today.trim(), pages: length };
+    setExpectedPages(length);
     setLoading(true);
     try {
       const res = await fetch("/api/story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, age: Number(age), likes, today }),
+        body: JSON.stringify({ name, age: Number(age), likes, today, pages: length }),
       });
       if (!res.ok || !res.body) {
         setError(await res.text());
@@ -424,7 +438,8 @@ export default function Home() {
   const guest = !auth.user || auth.user.isAnonymous;
   const nextReady = Boolean(pages[pageIndex + 1]?.complete);
   const writingNext = loading && !nextReady;
-  const totalPages = loading ? Math.max(EXPECTED_PAGES, pages.length) : pages.length;
+  const totalPages = loading ? Math.max(expectedPages, pages.length) : pages.length;
+  const ageForEstimate = Number(age) >= 1 && Number(age) <= 12 ? Number(age) : 5;
 
   return (
     <main>
@@ -460,6 +475,17 @@ export default function Home() {
             />
             <span>살</span>
           </div>
+        </div>
+        <div className="field">
+          <label htmlFor="length">이야기 길이</label>
+          <select id="length" value={length} onChange={(e) => setLength(Number(e.target.value))}>
+            {LENGTHS.map((l) => (
+              <option key={l.pages} value={l.pages}>
+                {l.label} · {l.pages}장 · 약 {readingMinutes(l.pages, ageForEstimate)}분
+              </option>
+            ))}
+          </select>
+          <p className="field-hint">장마다 그림이 한 장씩 그려져요. 길수록 그림이 많아져요.</p>
         </div>
         <div className="field">
           <label htmlFor="likes">좋아하는 것</label>
